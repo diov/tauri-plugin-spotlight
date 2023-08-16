@@ -3,7 +3,7 @@ use std::collections::HashMap;
 #[derive(serde::Deserialize, Default, Debug, Clone, PartialEq)]
 pub struct WindowConfig {
     pub label: String,
-    pub shortcut: String,
+    pub shortcut: Option<String>,
     pub macos_window_level: Option<i32>,
     pub auto_hide: Option<bool>,
 }
@@ -22,7 +22,7 @@ impl PluginConfig {
         } else if let Some(w) = b.windows.clone() {
             windows = w;
         }
-        let mut dict: HashMap<String, String> = HashMap::default();
+        let mut dict: HashMap<String, Option<String>> = HashMap::default();
         for w in &windows {
             dict.insert(w.label.clone(), w.shortcut.clone());
         }
@@ -65,7 +65,7 @@ mod tests {
         let b = PluginConfig {
             windows: Some(vec![WindowConfig {
                 label: String::from("main"),
-                shortcut: String::from("Ctrl+I"),
+                shortcut: Some(String::from("Ctrl+I")),
                 macos_window_level: None,
                 auto_hide: None,
             }]),
@@ -80,7 +80,7 @@ mod tests {
         let a = PluginConfig {
             windows: Some(vec![WindowConfig {
                 label: String::from("main"),
-                shortcut: String::from("Ctrl+I"),
+                shortcut: Some(String::from("Ctrl+I")),
                 macos_window_level: None,
                 auto_hide: None,
             }]),
@@ -89,7 +89,7 @@ mod tests {
         let b = PluginConfig {
             windows: Some(vec![WindowConfig {
                 label: String::from("foo"),
-                shortcut: String::from("bar"),
+                shortcut: Some(String::from("bar")),
                 macos_window_level: None,
                 auto_hide: None,
             }]),
@@ -102,13 +102,13 @@ mod tests {
                 windows: Some(vec![
                     WindowConfig {
                         label: String::from("main"),
-                        shortcut: String::from("Ctrl+I"),
+                        shortcut: Some(String::from("Ctrl+I")),
                         macos_window_level: None,
                         auto_hide: None,
                     },
                     WindowConfig {
                         label: String::from("foo"),
-                        shortcut: String::from("bar"),
+                        shortcut: Some(String::from("bar")),
                         macos_window_level: None,
                         auto_hide: None,
                     },

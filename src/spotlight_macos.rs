@@ -220,10 +220,14 @@ fn register_shortcut_for_window(
     window: &Window<Wry>,
     window_config: &WindowConfig,
 ) -> Result<(), Error> {
+    let shortcut = match window_config.shortcut.clone() {
+        Some(shortcut) => shortcut,
+        None => return Ok(()),
+    };
     let window = window.to_owned();
     let mut shortcut_manager = window.app_handle().global_shortcut_manager();
     shortcut_manager
-        .register(&window_config.shortcut, move || {
+        .register(&shortcut, move || {
             let app_handle = window.app_handle();
             let manager = app_handle.state::<SpotlightManager>();
             if window.is_visible().unwrap() {
