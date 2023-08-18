@@ -297,6 +297,7 @@ fn handle_focus_state_change(window: &Window<Wry>, window_config: &WindowConfig)
     let w = window.to_owned();
     window.on_window_event(move |event| {
         if let WindowEvent::Focused(false) = event {
+            let _ = set_previous_app(&w, get_frontmost_app_path());
             unregister_close_shortcut(&w).unwrap(); // FIXME:
             if auto_hide {
                 w.hide().unwrap();
