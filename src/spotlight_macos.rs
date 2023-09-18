@@ -13,7 +13,8 @@ use objc::{
 };
 use std::sync::Mutex;
 use tauri::{
-    GlobalShortcutManager, Manager, PhysicalPosition, PhysicalSize, Window, WindowEvent, Wry,
+    http::header::CONTENT_SECURITY_POLICY_REPORT_ONLY, GlobalShortcutManager, Manager,
+    PhysicalPosition, PhysicalSize, Window, WindowEvent, Wry,
 };
 
 use super::Error;
@@ -113,33 +114,36 @@ fn set_previous_app(window: &Window<Wry>, value: Option<String>) -> Result<bool,
         .map_err(|_| Error::FailedToGetExecutablePath)?
         .to_str()
     {
-        if Some(current_app_path.to_string()) == value {
-            let mut activated_non_spotlight_window: Option<String> = None;
-            for window in handle.windows().values() {
-                if registered_window.contains(&window.label().to_string()) {
-                    continue;
-                }
-                if let Some(window_config) = state.get_window_config(&window) {
-                    if let Some(auto_hide) = window_config.auto_hide {
-                        if auto_hide {
-                            continue;
+        let current_app_path = current_app_path.to_string();
+        if let Some(previous_app) = &value {
+            if current_app_path.starts_with(previous_app) {
+                let mut activated_non_spotlight_window: Option<String> = None;
+                for window in handle.windows().values() {
+                    if registered_window.contains(&window.label().to_string()) {
+                        continue;
+                    }
+                    if let Some(window_config) = state.get_window_config(&window) {
+                        if let Some(auto_hide) = window_config.auto_hide {
+                            if auto_hide {
+                                continue;
+                            }
+                        }
+                    }
+                    if let Ok(visible) = window.is_visible() {
+                        if visible {
+                            activated_non_spotlight_window = Some(window.label().to_string());
+                            break;
                         }
                     }
                 }
-                if let Ok(visible) = window.is_visible() {
-                    if visible {
-                        activated_non_spotlight_window = Some(window.label().to_string());
-                        break;
-                    }
+                if let Some(activated_non_spotlight_window) = activated_non_spotlight_window {
+                    value = Some(format!(
+                        "{}{}",
+                        SELF_KEY_PREFIX, activated_non_spotlight_window
+                    ));
+                } else {
+                    return Ok(existed);
                 }
-            }
-            if let Some(activated_non_spotlight_window) = activated_non_spotlight_window {
-                value = Some(format!(
-                    "{}{}",
-                    SELF_KEY_PREFIX, activated_non_spotlight_window
-                ));
-            } else {
-                return Ok(existed);
             }
         }
     }
