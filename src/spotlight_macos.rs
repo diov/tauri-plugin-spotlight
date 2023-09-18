@@ -119,6 +119,13 @@ fn set_previous_app(window: &Window<Wry>, value: Option<String>) -> Result<bool,
                 if registered_window.contains(&window.label().to_string()) {
                     continue;
                 }
+                if let Some(window_config) = state.get_window_config(&window) {
+                    if let Some(auto_hide) = window_config.auto_hide {
+                        if auto_hide {
+                            continue;
+                        }
+                    }
+                }
                 if let Ok(visible) = window.is_visible() {
                     if visible {
                         activated_non_spotlight_window = Some(window.label().to_string());
