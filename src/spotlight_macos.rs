@@ -13,7 +13,7 @@ use objc::{
 };
 use std::sync::Mutex;
 use tauri::{
-    http::header::CONTENT_SECURITY_POLICY_REPORT_ONLY, GlobalShortcutManager, Manager,
+    GlobalShortcutManager, Manager,
     PhysicalPosition, PhysicalSize, Window, WindowEvent, Wry,
 };
 
