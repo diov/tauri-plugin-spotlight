@@ -14,9 +14,10 @@ fn main() {
         .plugin(tauri_plugin_spotlight::init(Some(tauri_plugin_spotlight::PluginConfig {
             windows: Some(vec![
                 tauri_plugin_spotlight::WindowConfig {
-                    label: String::from("main"),
-                    shortcut: String::from("Ctrl+Shift+J"),
-                    macos_window_level: None,
+                    label: String::from("secondary"),
+                    shortcut: Some(String::from("Ctrl+Shift+J")),
+                    macos_window_level: Some(20),
+                    auto_hide: Some(true),
                 },
             ]),
             global_close_shortcut: Some(String::from("Escape")),

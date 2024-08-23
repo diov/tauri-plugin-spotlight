@@ -16,6 +16,8 @@ use objc::{
 use objc_foundation::INSObject;
 use tauri::{Window, Wry};
 
+use crate::WindowConfig;
+
 extern "C" {
     pub fn object_setClass(obj: id, cls: id) -> id;
 }
@@ -238,17 +240,19 @@ impl RawNSPanelDelegate {
     }
 }
 
-pub(crate) fn create_spotlight_panel(window: &Window<Wry>) -> ShareId<RawNSPanel> {
+pub(crate) fn create_spotlight_panel(window: &Window<Wry>, window_config: &WindowConfig) -> ShareId<RawNSPanel> {
     // Convert NSWindow Object to NSPanel
     let handle: id = window.ns_window().unwrap() as _;
     let panel = RawNSPanel::from(handle);
     let panel = panel.share();
 
     // Set panel above the main menu window level
-    panel.set_level(NSMainMenuWindowLevel + 1);
+    let window_level = window_config.macos_window_level.unwrap_or(NSMainMenuWindowLevel + 1);
+    panel.set_level(window_level);
 
     // Set panel to auto hide when it resigns key
-    panel.set_auto_hide(true);
+    let auto_hide = window_config.auto_hide.unwrap_or(true);
+    panel.set_auto_hide(auto_hide);
 
     // Ensure that the panel can display over the top of fullscreen apps
     panel.set_collection_behaviour(

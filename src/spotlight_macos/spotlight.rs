@@ -10,7 +10,7 @@ use tauri::{
     GlobalShortcutManager, Manager, PhysicalPosition, PhysicalSize, Window, WindowEvent, Wry
 };
 use super::panel::{create_spotlight_panel, RawNSPanel};
-use crate::{PluginConfig, WindowConfig};
+use crate::{ManagerExt, PluginConfig, WindowConfig};
 use crate::Error;
 
 #[link(name = "Foundation", kind = "framework")]
@@ -21,7 +21,7 @@ extern "C" {
 #[derive(Default, Debug)]
 pub struct SpotlightManager {
     pub config: PluginConfig,
-    registered_panels: RwLock<HashMap<String, Mutex<ShareId<RawNSPanel>>>>,
+    panels: RwLock<HashMap<String, Mutex<ShareId<RawNSPanel>>>>,
 }
 
 impl SpotlightManager {
@@ -48,21 +48,28 @@ impl SpotlightManager {
             None => return Ok(()),
         };
         let label = window.label();
-        let mut map = self.registered_panels.write().map_err(|_| Error::RwLock(String::from("failed to write registered panels")))?;
+        let mut map = self.panels.write().map_err(|_| Error::RwLock(String::from("failed to write registered panels")))?;
         if map.get(label).is_none() {
-            map.insert(String::from(label), Mutex::new(create_spotlight_panel(window)));
+            let panel = create_spotlight_panel(window, &window_config);
             register_shortcut_for_window(&window, &window_config)?;
             register_close_shortcut(&window)?;
-            handle_focus_state_change(&window);
-            set_window_level(&window, &window_config)?;
+            map.insert(label.into(), Mutex::new(panel));
         }
         Ok(())
     }
 
-    pub fn show(&self, window: &Window<Wry>) -> Result<(), Error> {
-        position_window_at_the_center_of_the_monitor_with_cursor(&window)?;
-        let label = window.label();
-        let map = self.registered_panels.read().map_err(|_| Error::RwLock(String::from("failed to read registered panels")))?;
+    pub fn get_panel(&self, label: &str) -> Result<ShareId<RawNSPanel>, Error> {
+        let map = self.panels.read().map_err(|_| Error::RwLock(String::from("failed to read registered panels")))?;
+        if let Some(panel) = map.get(label) {
+            let panel = panel.lock().map_err(|_| Error::Mutex(String::from("failed to lock panel")))?;
+            Ok(panel.clone())
+        } else {
+            Err(Error::Other(String::from("panel not found")))
+        }
+    }
+
+    pub fn show(&self, label: &str) -> Result<(), Error> {
+        let map = self.panels.read().map_err(|_| Error::RwLock(String::from("failed to read registered panels")))?;
         if let Some(panel) = map.get(label) {
             let panel = panel.lock().map_err(|_| Error::Mutex(String::from("failed to lock panel")))?;
             panel.show();
@@ -70,23 +77,14 @@ impl SpotlightManager {
         Ok(())
     }
 
-    pub fn hide(&self, window: &Window<Wry>) -> Result<(), Error> {
-        let label = window.label();
-        let map = self.registered_panels.read().map_err(|_| Error::RwLock(String::from("failed to read registered panels")))?;
+    pub fn hide(&self, label: &str) -> Result<(), Error> {
+        let map = self.panels.read().map_err(|_| Error::RwLock(String::from("failed to read registered panels")))?;
         if let Some(panel) = map.get(label) {
             let panel = panel.lock().map_err(|_| Error::Mutex(String::from("failed to lock panel")))?;
             panel.order_out(None);
         }
         Ok(())
     }
-}
-
-fn set_window_level(window: &Window<Wry>, window_config: &WindowConfig) -> Result<(), Error> {
-    if let Some(level) = window_config.macos_window_level {
-        let handle: id = window.ns_window().map_err(|_| Error::FailedToGetNSWindow)? as _;
-        unsafe { handle.setLevel_((level).into()) };
-    }
-    Ok(())
 }
 
 #[macro_export]
@@ -108,15 +106,20 @@ macro_rules! nsstring_to_string {
 }
 
 fn register_shortcut_for_window(window: &Window<Wry>, window_config: &WindowConfig) -> Result<(), Error> {
+    let shortcut = match window_config.shortcut.clone() {
+        Some(shortcut) => shortcut,
+        None => return Ok(()),
+    };
     let window = window.to_owned();
     let mut shortcut_manager = window.app_handle().global_shortcut_manager();
-    shortcut_manager.register(&window_config.shortcut, move || {
+    shortcut_manager.register(&shortcut, move || {
         let app_handle = window.app_handle();
         let manager = app_handle.state::<SpotlightManager>();
-        if window.is_visible().unwrap() {
-            manager.hide(&window).unwrap();
+        let panel = manager.get_panel(window.label()).unwrap();
+        if panel.is_visible() {
+            panel.order_out(None);
         } else {
-            manager.show(&window).unwrap();
+            panel.show();
         }
     }).map_err(|_| Error::Other(String::from("failed to register shortcut")))?;
     Ok(())
@@ -139,8 +142,8 @@ fn register_close_shortcut(window: &Window<Wry>) -> Result<(), Error> {
                         vec![]
                     };
                     for label in labels {
-                        if let Some(window) = app_handle.get_window(&label) {
-                            state.hide(&window).unwrap();
+                        if let Ok(panel) = state.get_panel(&label) {
+                            panel.order_out(None);
                         }
                     }
                 }).map_err(tauri::Error::Runtime)?;
@@ -150,35 +153,6 @@ fn register_close_shortcut(window: &Window<Wry>) -> Result<(), Error> {
         }
     }
     Ok(())
-}
-
-fn unregister_close_shortcut(window: &Window<Wry>) -> Result<(), Error> {
-    let window = window.to_owned();
-    let mut shortcut_manager = window.app_handle().global_shortcut_manager();
-    let app_handle = window.app_handle();
-    let manager = app_handle.state::<SpotlightManager>();
-    if let Some(close_shortcut) = manager.config.global_close_shortcut.clone() {
-        if let Ok(registered) = shortcut_manager.is_registered(&close_shortcut) {
-            if registered {
-                shortcut_manager.unregister(&close_shortcut).map_err(tauri::Error::Runtime)?;
-            }
-        } else {
-            return Err(Error::Other(String::from("failed to register shortcut")));
-        }
-    }
-    Ok(())
-}
-
-fn handle_focus_state_change(window: &Window<Wry>) {
-    let w = window.to_owned();
-    window.on_window_event(move |event| {
-        if let WindowEvent::Focused(false) = event {
-            unregister_close_shortcut(&w).unwrap(); // FIXME:
-            w.hide().unwrap();
-        } else {
-            register_close_shortcut(&w).unwrap(); // FIXME:
-        }
-    });
 }
 
 /// Positions a given window at the center of the monitor with cursor

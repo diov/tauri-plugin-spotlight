@@ -3,8 +3,9 @@ use std::collections::HashMap;
 #[derive(serde::Deserialize, Default, Debug, Clone, PartialEq)]
 pub struct WindowConfig {
     pub label: String,
-    pub shortcut: String,
+    pub shortcut: Option<String>,
     pub macos_window_level: Option<i32>,
+    pub auto_hide: Option<bool>,
 }
 
 #[derive(serde::Deserialize, Default, Debug, Clone, PartialEq)]
@@ -21,7 +22,7 @@ impl PluginConfig {
         } else if let Some(w) = b.windows.clone() {
             windows = w;
         }
-        let mut dict: HashMap<String, String> = HashMap::default();
+        let mut dict: HashMap<String, Option<String>> = HashMap::default();
         for w in &windows {
             dict.insert(w.label.clone(), w.shortcut.clone());
         }
@@ -32,6 +33,7 @@ impl PluginConfig {
                         label: config.label,
                         shortcut: config.shortcut,
                         macos_window_level: config.macos_window_level,
+                        auto_hide: config.auto_hide,
                     });
                 }
             }
@@ -61,8 +63,9 @@ mod tests {
             windows: Some(vec![
                 WindowConfig {
                     label: String::from("main"),
-                    shortcut: String::from("Ctrl+I"),
+                    shortcut: Some(String::from("Ctrl+I")),
                     macos_window_level: None,
+                    auto_hide: None,
                 },
             ]),
             global_close_shortcut: Some(String::from("Escape")),
@@ -77,8 +80,9 @@ mod tests {
             windows: Some(vec![
                 WindowConfig {
                     label: String::from("main"),
-                    shortcut: String::from("Ctrl+I"),
+                    shortcut: Some(String::from("Ctrl+I")),
                     macos_window_level: None,
+                    auto_hide: None,
                 },
             ]),
             global_close_shortcut: None,
@@ -87,8 +91,9 @@ mod tests {
             windows: Some(vec![
                 WindowConfig {
                     label: String::from("foo"),
-                    shortcut: String::from("bar"),
+                    shortcut: Some(String::from("bar")),
                     macos_window_level: None,
+                    auto_hide: None,
                 },
             ]),
             global_close_shortcut: None,
@@ -98,13 +103,15 @@ mod tests {
             windows: Some(vec![
                 WindowConfig {
                     label: String::from("main"),
-                    shortcut: String::from("Ctrl+I"),
+                    shortcut: Some(String::from("Ctrl+I")),
                     macos_window_level: None,
+                    auto_hide: None,
                 },
                 WindowConfig {
                     label: String::from("foo"),
-                    shortcut: String::from("bar"),
+                    shortcut: Some(String::from("bar")),
                     macos_window_level: None,
+                    auto_hide: None,
                 },
             ]),
             global_close_shortcut: None,

@@ -16,6 +16,9 @@
       "shell": {
         "all": false,
         "open": true
+      },
+      "window": {
+        "show": true
       }
     },
     "bundle": {
@@ -64,7 +67,7 @@
         "visible": false,
         "decorations": false,
         "fullscreen": false,
-        "transparent": true,
+        "transparent": false,
         "height": 200,
         "resizable": false,
         "title": "react-app",
