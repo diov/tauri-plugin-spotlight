@@ -35,13 +35,8 @@ fn hide(manager: State<'_, spotlight::SpotlightManager>, label: &str) -> Result<
 pub fn init(spotlight_config: Option<PluginConfig>) -> TauriPlugin<Wry, Option<PluginConfig>> {
     Builder::<Wry, Option<PluginConfig>>::new("spotlight")
         .invoke_handler(tauri::generate_handler![show, hide])
-        .setup_with_config(|app, config| {
-            app.manage(spotlight::SpotlightManager::new(
-                PluginConfig::merge(
-                    &spotlight_config.unwrap_or(PluginConfig::default()),
-                    &config.unwrap_or(PluginConfig::default()),
-                )
-            ));
+        .setup(|app| {
+            app.manage(spotlight::SpotlightManager::new(spotlight_config.unwrap_or(PluginConfig::default())));
             Ok(())
         })
         .on_webview_ready(move |window| {

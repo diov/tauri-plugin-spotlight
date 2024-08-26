@@ -1,27 +1,32 @@
-use std::{collections::HashMap, sync::{Mutex, RwLock}};
-use cocoa::{
-    appkit::{CGFloat, NSWindow},
-    base::{id, nil, BOOL, NO, YES},
-    foundation::{NSPoint, NSRect},
-};
-use objc_id::ShareId;
-use objc::{class, msg_send, sel, sel_impl};
-use tauri::{
-    GlobalShortcutManager, Manager, PhysicalPosition, PhysicalSize, Window, WindowEvent, Wry
-};
-use super::panel::{create_spotlight_panel, RawNSPanel};
-use crate::{ManagerExt, PluginConfig, WindowConfig};
 use crate::Error;
+use crate::{PluginConfig, WindowConfig};
 
-#[link(name = "Foundation", kind = "framework")]
-extern "C" {
-    pub fn NSMouseInRect(aPoint: NSPoint, aRect: NSRect, flipped: BOOL) -> BOOL;
+use core::fmt;
+use objc_id::ShareId;
+use std::{
+    collections::HashMap,
+    sync::{Mutex, RwLock},
+};
+use tauri::{GlobalShortcutManager, Manager, Window, Wry};
+use tauri_nspanel::cocoa::appkit::{NSMainMenuWindowLevel, NSWindowCollectionBehavior};
+use tauri_nspanel::panel_delegate;
+use tauri_nspanel::raw_nspanel::RawNSPanel;
+
+#[allow(non_upper_case_globals)]
+const NSWindowStyleMaskNonActivatingPanel: i32 = 1 << 7;
+
+struct RawNSPanelWrapper(ShareId<RawNSPanel>);
+
+impl fmt::Debug for RawNSPanelWrapper {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "RawNSPanelWraper")
+    }
 }
 
 #[derive(Default, Debug)]
 pub struct SpotlightManager {
     pub config: PluginConfig,
-    panels: RwLock<HashMap<String, Mutex<ShareId<RawNSPanel>>>>,
+    panels: RwLock<HashMap<String, Mutex<RawNSPanelWrapper>>>,
 }
 
 impl SpotlightManager {
@@ -48,40 +53,61 @@ impl SpotlightManager {
             None => return Ok(()),
         };
         let label = window.label();
-        let mut map = self.panels.write().map_err(|_| Error::RwLock(String::from("failed to write registered panels")))?;
+        let mut map = self
+            .panels
+            .write()
+            .map_err(|_| Error::RwLock(String::from("failed to write registered panels")))?;
         if map.get(label).is_none() {
-            let panel = create_spotlight_panel(window, &window_config);
+            let panel = window_to_panel(window)?;
+            setup_panel_for_window(window, &panel, &window_config)?;
+            let wrapper = RawNSPanelWrapper(panel);
+            map.insert(label.into(), Mutex::new(wrapper));
+
             register_shortcut_for_window(&window, &window_config)?;
             register_close_shortcut(&window)?;
-            map.insert(label.into(), Mutex::new(panel));
         }
         Ok(())
     }
 
     pub fn get_panel(&self, label: &str) -> Result<ShareId<RawNSPanel>, Error> {
-        let map = self.panels.read().map_err(|_| Error::RwLock(String::from("failed to read registered panels")))?;
+        let map = self
+            .panels
+            .read()
+            .map_err(|_| Error::RwLock(String::from("failed to read registered panels")))?;
         if let Some(panel) = map.get(label) {
-            let panel = panel.lock().map_err(|_| Error::Mutex(String::from("failed to lock panel")))?;
-            Ok(panel.clone())
+            let panel = panel
+                .lock()
+                .map_err(|_| Error::Mutex(String::from("failed to lock panel")))?;
+            Ok(panel.0.clone())
         } else {
             Err(Error::Other(String::from("panel not found")))
         }
     }
 
     pub fn show(&self, label: &str) -> Result<(), Error> {
-        let map = self.panels.read().map_err(|_| Error::RwLock(String::from("failed to read registered panels")))?;
+        let map = self
+            .panels
+            .read()
+            .map_err(|_| Error::RwLock(String::from("failed to read registered panels")))?;
         if let Some(panel) = map.get(label) {
-            let panel = panel.lock().map_err(|_| Error::Mutex(String::from("failed to lock panel")))?;
-            panel.show();
+            let panel = panel
+                .lock()
+                .map_err(|_| Error::Mutex(String::from("failed to lock panel")))?;
+            panel.0.show();
         }
         Ok(())
     }
 
     pub fn hide(&self, label: &str) -> Result<(), Error> {
-        let map = self.panels.read().map_err(|_| Error::RwLock(String::from("failed to read registered panels")))?;
+        let map = self
+            .panels
+            .read()
+            .map_err(|_| Error::RwLock(String::from("failed to read registered panels")))?;
         if let Some(panel) = map.get(label) {
-            let panel = panel.lock().map_err(|_| Error::Mutex(String::from("failed to lock panel")))?;
-            panel.order_out(None);
+            let panel = panel
+                .lock()
+                .map_err(|_| Error::Mutex(String::from("failed to lock panel")))?;
+            panel.0.order_out(None);
         }
         Ok(())
     }
@@ -105,23 +131,74 @@ macro_rules! nsstring_to_string {
     }};
 }
 
-fn register_shortcut_for_window(window: &Window<Wry>, window_config: &WindowConfig) -> Result<(), Error> {
+fn window_to_panel(window: &Window<Wry>) -> Result<ShareId<RawNSPanel>, Error> {
+    let panel = RawNSPanel::from_window(window.to_owned());
+    Ok(panel.share())
+}
+
+fn setup_panel_for_window(
+    window: &Window<Wry>,
+    panel: &ShareId<RawNSPanel>,
+    window_config: &WindowConfig,
+) -> Result<(), Error> {
+    let app_handle = window.app_handle();
+
+    let window_level = window_config
+        .macos_window_level
+        .unwrap_or(NSMainMenuWindowLevel + 1);
+    panel.set_level(window_level);
+
+    panel.set_style_mask(NSWindowStyleMaskNonActivatingPanel);
+    panel.set_collection_behaviour(
+        NSWindowCollectionBehavior::NSWindowCollectionBehaviorTransient
+            | NSWindowCollectionBehavior::NSWindowCollectionBehaviorMoveToActiveSpace
+            | NSWindowCollectionBehavior::NSWindowCollectionBehaviorFullScreenAuxiliary,
+    );
+
+    let auto_hide = window_config.auto_hide.unwrap_or(true);
+    let panel_delegate = panel_delegate!(SpotlightPanelDelegate {
+        window_did_resign_key
+    });
+    let label = window.label().to_owned();
+    panel_delegate.set_listener(Box::new(move |delegate_name: String| {
+        match delegate_name.as_str() {
+            "window_did_resign_key" => {
+                if auto_hide {
+                    let manager = app_handle.state::<SpotlightManager>();
+                    let panel = manager.get_panel(&label).unwrap();
+                    panel.order_out(None);
+                }
+            }
+            _ => (),
+        }
+    }));
+    panel.set_delegate(panel_delegate);
+
+    Ok(())
+}
+
+fn register_shortcut_for_window(
+    window: &Window<Wry>,
+    window_config: &WindowConfig,
+) -> Result<(), Error> {
     let shortcut = match window_config.shortcut.clone() {
         Some(shortcut) => shortcut,
         None => return Ok(()),
     };
     let window = window.to_owned();
-    let mut shortcut_manager = window.app_handle().global_shortcut_manager();
-    shortcut_manager.register(&shortcut, move || {
-        let app_handle = window.app_handle();
-        let manager = app_handle.state::<SpotlightManager>();
-        let panel = manager.get_panel(window.label()).unwrap();
-        if panel.is_visible() {
-            panel.order_out(None);
-        } else {
-            panel.show();
-        }
-    }).map_err(|_| Error::Other(String::from("failed to register shortcut")))?;
+    let app_handle = window.app_handle();
+    let mut shortcut_manager = app_handle.global_shortcut_manager();
+    shortcut_manager
+        .register(&shortcut, move || {
+            let manager = app_handle.state::<SpotlightManager>();
+            let panel = manager.get_panel(window.label()).unwrap();
+            if panel.is_visible() {
+                panel.order_out(None);
+            } else {
+                panel.show();
+            }
+        })
+        .map_err(|_| Error::Other(String::from("failed to register shortcut")))?;
     Ok(())
 }
 
@@ -133,97 +210,26 @@ fn register_close_shortcut(window: &Window<Wry>) -> Result<(), Error> {
     if let Some(close_shortcut) = &manager.config.global_close_shortcut {
         if let Ok(registered) = shortcut_manager.is_registered(&close_shortcut) {
             if !registered {
-                shortcut_manager.register(&close_shortcut, move || {
-                    let app_handle = window.app_handle();
-                    let state = app_handle.state::<SpotlightManager>();
-                    let labels = if let Some(ref windows) = state.config.windows {
-                        windows.iter().map(|window| window.label.clone()).collect()
-                    } else {
-                        vec![]
-                    };
-                    for label in labels {
-                        if let Ok(panel) = state.get_panel(&label) {
-                            panel.order_out(None);
+                shortcut_manager
+                    .register(&close_shortcut, move || {
+                        let app_handle = window.app_handle();
+                        let state = app_handle.state::<SpotlightManager>();
+                        let labels = if let Some(ref windows) = state.config.windows {
+                            windows.iter().map(|window| window.label.clone()).collect()
+                        } else {
+                            vec![]
+                        };
+                        for label in labels {
+                            if let Ok(panel) = state.get_panel(&label) {
+                                panel.order_out(None);
+                            }
                         }
-                    }
-                }).map_err(tauri::Error::Runtime)?;
+                    })
+                    .map_err(tauri::Error::Runtime)?;
             }
         } else {
-            return Err(Error::Other(String::from("failed to register shortcut")));
+            return Err(Error::Other(String::from("Shortcut already registered")));
         }
     }
     Ok(())
-}
-
-/// Positions a given window at the center of the monitor with cursor
-fn position_window_at_the_center_of_the_monitor_with_cursor(window: &Window<Wry>) -> Result<(), Error> {
-    if let Some(monitor) = get_monitor_with_cursor() {
-        let display_size = monitor.size.to_logical::<f64>(monitor.scale_factor);
-        let display_pos = monitor.position.to_logical::<f64>(monitor.scale_factor);
-        let handle: id = window.ns_window().map_err(|_| Error::FailedToGetNSWindow)? as _;
-        let win_frame: NSRect = unsafe { handle.frame() };
-        let rect = NSRect {
-            origin: NSPoint {
-                x: (display_pos.x + (display_size.width / 2.0)) - (win_frame.size.width / 2.0),
-                y: (display_pos.y + (display_size.height / 2.0)) - (win_frame.size.height / 2.0),
-            },
-            size: win_frame.size,
-        };
-        let _: () = unsafe { msg_send![handle, setFrame: rect display: YES] };
-    }
-    Ok(())
-}
-
-struct Monitor {
-    #[allow(dead_code)]
-    pub name: Option<String>,
-    pub size: PhysicalSize<u32>,
-    pub position: PhysicalPosition<i32>,
-    pub scale_factor: f64,
-}
-
-/// Returns the Monitor with cursor
-fn get_monitor_with_cursor() -> Option<Monitor> {
-    objc::rc::autoreleasepool(|| {
-        let mouse_location: NSPoint = unsafe { msg_send![class!(NSEvent), mouseLocation] };
-        let screens: id = unsafe { msg_send![class!(NSScreen), screens] };
-        let screens_iter: id = unsafe { msg_send![screens, objectEnumerator] };
-        let mut next_screen: id;
-
-        let frame_with_cursor: Option<NSRect> = loop {
-            next_screen = unsafe { msg_send![screens_iter, nextObject] };
-            if next_screen == nil {
-                break None;
-            }
-
-            let frame: NSRect = unsafe { msg_send![next_screen, frame] };
-            let is_mouse_in_screen_frame: BOOL =
-                unsafe { NSMouseInRect(mouse_location, frame, NO) };
-            if is_mouse_in_screen_frame == YES {
-                break Some(frame);
-            }
-        };
-
-        if let Some(frame) = frame_with_cursor {
-            let name: id = unsafe { msg_send![next_screen, localizedName] };
-            let screen_name = unsafe { nsstring_to_string!(name) };
-            let scale_factor: CGFloat = unsafe { msg_send![next_screen, backingScaleFactor] };
-            let scale_factor: f64 = scale_factor;
-
-            return Some(Monitor {
-                name: screen_name,
-                position: PhysicalPosition {
-                    x: (frame.origin.x * scale_factor) as i32,
-                    y: (frame.origin.y * scale_factor) as i32,
-                },
-                size: PhysicalSize {
-                    width: (frame.size.width * scale_factor) as u32,
-                    height: (frame.size.height * scale_factor) as u32,
-                },
-                scale_factor,
-            });
-        }
-
-        None
-    })
 }
