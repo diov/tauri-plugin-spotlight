@@ -85,50 +85,22 @@ impl SpotlightManager {
     }
 
     pub fn show(&self, label: &str) -> Result<(), Error> {
-        let map = self
-            .panels
-            .read()
-            .map_err(|_| Error::RwLock(String::from("failed to read registered panels")))?;
-        if let Some(panel) = map.get(label) {
-            let panel = panel
-                .lock()
-                .map_err(|_| Error::Mutex(String::from("failed to lock panel")))?;
-            panel.0.show();
+        if let Ok(panel) = self.get_panel(label) {
+            if !panel.is_visible() {
+                panel.show();
+            }
         }
         Ok(())
     }
 
     pub fn hide(&self, label: &str) -> Result<(), Error> {
-        let map = self
-            .panels
-            .read()
-            .map_err(|_| Error::RwLock(String::from("failed to read registered panels")))?;
-        if let Some(panel) = map.get(label) {
-            let panel = panel
-                .lock()
-                .map_err(|_| Error::Mutex(String::from("failed to lock panel")))?;
-            panel.0.order_out(None);
+        if let Ok(panel) = self.get_panel(label) {
+            if panel.is_visible() {
+                panel.order_out(None);
+            }
         }
         Ok(())
     }
-}
-
-#[macro_export]
-macro_rules! nsstring_to_string {
-    ($ns_string:expr) => {{
-        use objc::{sel, sel_impl};
-        let utf8: id = objc::msg_send![$ns_string, UTF8String];
-        let string = if !utf8.is_null() {
-            Some({
-                std::ffi::CStr::from_ptr(utf8 as *const std::ffi::c_char)
-                    .to_string_lossy()
-                    .into_owned()
-            })
-        } else {
-            None
-        };
-        string
-    }};
 }
 
 fn window_to_panel(window: &Window<Wry>) -> Result<ShareId<RawNSPanel>, Error> {
