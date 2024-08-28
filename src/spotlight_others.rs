@@ -51,20 +51,25 @@ impl SpotlightManager {
         Ok(())
     }
 
-    pub fn show(&self, window: &Window<Wry>) -> Result<(), Error> {
-        if !window.is_visible().map_err(|_| Error::FailedToCheckWindowVisibility)? {
-            window.show().map_err(|_| Error::FailedToShowWindow)?;
-            window.set_focus().map_err(|_| Error::FailedToShowWindow)?;
+    pub fn show(&self, label: &str) -> Result<(), Error> {
+        if let Some(window) = app.get_window(label) {
+            if !window.is_visible().map_err(|_| Error::FailedToCheckWindowVisibility)? {
+                window.show().map_err(|_| Error::FailedToShowWindow)?;
+                window.set_focus().map_err(|_| Error::FailedToShowWindow)?;
+            }
         }
         Ok(())
     }
 
-    pub fn hide(&self, window: &Window<Wry>) -> Result<(), Error> {
-        if window.is_visible().map_err(|_| Error::FailedToCheckWindowVisibility)? {
-            window.hide().map_err(|_| Error::FailedToHideWindow)?;
+    pub fn hide(&self, label: &str) -> Result<(), Error> {
+        if let Some(window) = app.get_window(label) {
+            if window.is_visible().map_err(|_| Error::FailedToCheckWindowVisibility)? {
+                window.hide().map_err(|_| Error::FailedToHideWindow)?;
+            }
         }
         Ok(())
     }
+
 }
 
 fn register_shortcut_for_window(window: &Window<Wry>, window_config: &WindowConfig) -> Result<(), Error> {
