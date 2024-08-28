@@ -52,20 +52,16 @@ impl SpotlightManager {
     }
 
     pub fn show(&self, label: &str) -> Result<(), Error> {
-        if let Some(window) = self.get_window(label) {
-            if !window.is_visible().map_err(|_| Error::FailedToCheckWindowVisibility)? {
-                window.show().map_err(|_| Error::FailedToShowWindow)?;
-                window.set_focus().map_err(|_| Error::FailedToShowWindow)?;
-            }
+        if !window.is_visible().map_err(|_| Error::FailedToCheckWindowVisibility)? {
+            window.show().map_err(|_| Error::FailedToShowWindow)?;
+            window.set_focus().map_err(|_| Error::FailedToShowWindow)?;
         }
         Ok(())
     }
 
     pub fn hide(&self, label: &str) -> Result<(), Error> {
-        if let Some(window) = self.get_window(label) {
-            if window.is_visible().map_err(|_| Error::FailedToCheckWindowVisibility)? {
-                window.hide().map_err(|_| Error::FailedToHideWindow)?;
-            }
+        if window.is_visible().map_err(|_| Error::FailedToCheckWindowVisibility)? {
+            window.hide().map_err(|_| Error::FailedToHideWindow)?;
         }
         Ok(())
     }

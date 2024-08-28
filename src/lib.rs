@@ -23,13 +23,37 @@ impl<R: Runtime, T: Manager<R>> ManagerExt<R> for T {
 }
 
 #[tauri::command]
+#[cfg(target_os = "macos")]
 fn show(manager: State<'_, spotlight::SpotlightManager>, label: &str) -> Result<(), String> {
     manager.show(label).map_err(|err| format!("{:?}", err))
 }
 
 #[tauri::command]
+#[cfg(target_os = "macos")]
 fn hide(manager: State<'_, spotlight::SpotlightManager>, label: &str) -> Result<(), String> {
     manager.hide(label).map_err(|err| format!("{:?}", err))
+}
+
+#[tauri::command]
+#[cfg(target_os = "windows")]
+fn show(manager: State<'_, spotlight::SpotlightManager>, label: &str) -> Result<(), String> {
+    if let Some(window) = app.get_window(label) {
+        let manager = app.spotlight();
+        manager.show(window).map_err(|err| format!("{:?}", err))
+    } else {
+        return Err(format!("Window with label '{}' not found", label));
+    }
+}
+
+#[tauri::command]
+#[cfg(target_os = "windows")]
+fn hide(manager: State<'_, spotlight::SpotlightManager>, label: &str) -> Result<(), String> {
+    if let Some(window) = app.get_window(label) {
+        let manager = app.spotlight();
+        manager.hide(window).map_err(|err| format!("{:?}", err))
+    } else {
+        return Err(format!("Window with label '{}' not found", label));
+    }
 }
 
 pub fn init(spotlight_config: Option<PluginConfig>) -> TauriPlugin<Wry, Option<PluginConfig>> {
