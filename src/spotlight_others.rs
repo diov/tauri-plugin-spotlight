@@ -34,6 +34,7 @@ impl SpotlightManager {
             Some(window_config) => window_config,
             None => return Ok(()),
         };
+        let auto_hide = window_config.auto_hide.unwrap_or(true);
         let label = window.label().to_string();
         let handle = window.app_handle();
         let state = handle.state::<SpotlightManager>();
@@ -45,7 +46,7 @@ impl SpotlightManager {
         if !registered {
             register_shortcut_for_window(&window, &window_config)?;
             register_close_shortcut(&window)?;
-            handle_focus_state_change(&window);
+            handle_focus_state_change(&window, auto_hide);
             registered_window.push(label);
         }
         Ok(())
@@ -132,12 +133,14 @@ fn unregister_close_shortcut(window: &Window<Wry>) -> Result<(), Error> {
     Ok(())
 }
 
-fn handle_focus_state_change(window: &Window<Wry>) {
+fn handle_focus_state_change(window: &Window<Wry>, auto_hide: bool) {
     let w = window.to_owned();
     window.on_window_event(move |event| {
         if let WindowEvent::Focused(false) = event {
             unregister_close_shortcut(&w).unwrap(); // FIXME:
-            w.hide().unwrap();
+            if auto_hide {
+                w.hide().unwrap();
+            }
         } else {
             register_close_shortcut(&w).unwrap(); // FIXME:
         }
