@@ -166,7 +166,9 @@ fn handle_focus_state_change(window: &Window<Wry>, auto_hide: bool) {
             } else {
                 // send a message to js
                 let window = app_handle.get_window(&label).unwrap();
-                window.emit("window_did_resign_key", Some(true)).unwrap();
+                window
+                    .emit_and_trigger("window_did_resign_key", Some(true))
+                    .unwrap();
             }
         } else {
             register_close_shortcut(&w).unwrap(); // FIXME:
