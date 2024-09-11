@@ -139,6 +139,10 @@ fn setup_panel_for_window(
                     let manager = app_handle.state::<SpotlightManager>();
                     let panel = manager.get_panel(&label).unwrap();
                     panel.order_out(None);
+                } else {
+                    // send a message to js
+                    let window = app_handle.get_window(&label).unwrap();
+                    window.emit("window_did_resign_key", Some(true)).unwrap();
                 }
             }
             _ => (),
